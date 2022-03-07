@@ -3,7 +3,7 @@ MVA Deep RL Project
 
 **Authors**: Raphaël Rozenberg, Arthur Pignet,  Frédéric Zheng
 
-The aim of this project is to reimplement the algorithm from the paper ![Continious control with deep reinforcement learning](https://arxiv.org/pdf/1509.02971.pdf) 
+The aim of this project is to reimplement the algorithm from the paper [Continious control with deep reinforcement learning](https://arxiv.org/pdf/1509.02971.pdf) 
 
 Project Organization
 ------------
