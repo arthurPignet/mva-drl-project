@@ -7,10 +7,11 @@ import rlax
 import jax.numpy as jnp
 import optax
 import chex
-from .data import Trajectory, LearnerState
+from .data import Trajectory, LearnerState, LogsDict
 import tree
 from typing import Sequence, Mapping, Tuple
-import types
+from acme import types, specs
+
 import haiku as hk
 
 from .networks import PolicyNetwork, ValueNetwork
@@ -53,7 +54,7 @@ class RandomAgent(Agent):
 
 class A2CAgent(Agent):
     def __init__(self, seed: int, learning_rate: float, gamma: float, value_output_sizes: Sequence[int],
-                 policy_output_sizes: Sequence[int], environment_spec: acme.specs.EnvironmentSpec,
+                 policy_output_sizes: Sequence[int], environment_spec: specs.EnvironmentSpec,
                  entropy_loss_coef: float) -> None:
         self._rng = jax.random.PRNGKey(seed=seed)
         self._init_loss, apply_loss = hk.without_apply_rng(hk.transform(self._loss_function))

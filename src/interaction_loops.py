@@ -6,7 +6,7 @@ import numpy as np
 import tree
 from typing import *
 
-from .utils import actor_target, sequence_of_timesteps_with_action_to_trajectory
+from .utils import actor_target, sequence_of_timesteps_with_action_to_trajectory, returns
 from .plot_utils import pretty_print
 from .agents import Agent, A2CAgent
 
@@ -77,3 +77,29 @@ def a2c_parallel_interaction_loop(agent: A2CAgent, env_factory: Callable[[], dm_
             print(pretty_print(logs))
     for actor in actors:
         actor.join()
+
+
+def evaluation_parallel_interaction_loop(agent: A2CAgent, 
+env_factory: Callable[[],
+ dm_env.Environment],
+  sequence_length: int,
+   num_actors: int = 2):
+  parent_pipes, children_pipes = zip(*[mp.Pipe(duplex=True) for _ in range(num_actors)])
+  actors = [mp.Process(target=actor_target,
+   args=(env_factory, i, pipe, sequence_length)) for i, pipe in enumerate(children_pipes)]
+  for actor in actors:
+    actor.start()
+  rewards = []
+  dones = []
+  for learner_step in range(sequence_length):
+    
+    ts = tree.map_structure(lambda *x: np.stack(x, axis=0), *[pipe.recv() for pipe in parent_pipes])
+    actions = agent.batched_actor_step(ts.observation, for_eval=True)
+    for i, pipe in enumerate(parent_pipes):
+      pipe.send(actions[i])
+    rewards.append(ts.reward)
+    dones.append(ts.step_type == dm_env.StepType.LAST)
+  print(f'Average return: {np.mean(returns(rewards, dones))}')
+  for actor in actors:
+    actor.join()
+    actor.close()

@@ -1,6 +1,7 @@
 from acme import types
 import chex
 import optax
+from typing import Mapping
 
 
 @chex.dataclass
@@ -16,3 +17,5 @@ class Trajectory:
 class LearnerState:
     params: chex.Array
     opt_state: optax.OptState
+
+LogsDict = Mapping[str, chex.Array]

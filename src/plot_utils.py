@@ -9,7 +9,7 @@ import base64
 
 
 # Video display facility
-def display_video(frames, filename='temp.mp4', frame_repeat=1):
+def display_video(frames, filename='./results/videos/temp.mp4', frame_repeat=1):
     """Save and display video."""
     # Write video
     with imageio.get_writer(filename, fps=60) as video:
