@@ -16,6 +16,7 @@ class Trajectory:
 @chex.dataclass
 class LearnerState:
     params: chex.Array
+    state: chex.Array
     opt_state: optax.OptState
 
 LogsDict = Mapping[str, chex.Array]
