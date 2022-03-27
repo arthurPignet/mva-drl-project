@@ -2,6 +2,7 @@ from acme import types
 import chex
 import optax
 from typing import Mapping
+import collections
 
 
 @chex.dataclass
@@ -20,3 +21,5 @@ class LearnerState:
     opt_state: optax.OptState
 
 LogsDict = Mapping[str, chex.Array]
+
+Transition = collections.namedtuple("Transition", field_names=["obs_tm1", "action_tm1", "reward_t", "discount_t", "obs_t", "done"])
