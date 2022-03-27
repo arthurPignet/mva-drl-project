@@ -204,7 +204,7 @@ class DDPGAgent(Agent):
 
         self._value_output_sizes = value_output_sizes
         self._policy_output_sizes = policy_output_sizes
-        self._entropy_loss_coef = entropy_loss_coef
+        #self._entropy_loss_coef = entropy_loss_coef  don't need that as we are not regulazing
         self._gamma = gamma
         self._environment_spec = environment_spec
 
@@ -267,35 +267,45 @@ class DDPGAgent(Agent):
     def _loss_function(self, trajectory: Trajectory) -> Tuple[chex.Array, LogsDict]:
         # inputs are assumed to be provided such that the full sequence that we get is
         # o_0 a_0 r_0 d_0, ...., o_T, a_T, r_T, d_T
-        mu = hk.BatchApply(PolicyNetworkDDPG(self._environment_spec.actions))(trajectory.observations, True)
-        values = hk.BatchApply(ValueNetworkDDPG())(trajectory.observations, trajectory.observations) #2nd arg will be actions
+        state, action, next_state, reward, not_done = sample.data # need to change that
 
-        batched_return_fn = jax.vmap(
-            functools.partial(rlax.lambda_returns, stop_target_gradients=True),
-            in_axes=1,
-            out_axes=1)
-        value_targets = batched_return_fn(
-            trajectory.rewards[1:],
-            (self._gamma * trajectory.discounts * (1. - trajectory.dones))[:-1],
-            values[1:],
-        )
-        value_loss = jnp.mean(.5 * jnp.square(values[:-1] - value_targets))
+        # actor loss
+        action_ = hk.BatchApply(PolicyNetworkDDPG(self._environment_spec.actions))(state, True)
+        values = hk.BatchApply(ValueNetworkDDPG())(state, action_) #2nd arg will be actions
+        actor_loss = -jnp.mean(values)
 
-        sg_advantages = jax.lax.stop_gradient(value_targets - values[:-1])
-        action_log_probs = rlax.gaussian_diagonal().logprob(trajectory.actions, mu, sigma)
 
-        entropies = rlax.gaussian_diagonal().entropy(mu, sigma)
-        entropy_loss = -jnp.mean(entropies)
-        policy_loss = -jnp.mean(sg_advantages * action_log_probs[:-1])
-        policy_loss = policy_loss + self._entropy_loss_coef * entropy_loss
+        #critic loss
+        next_action = hk.BatchApply(PolicyNetworkDDPG(self._environment_spec.actions))(next_state, True)
+        bootstrapped_q = hk.BatchApply(ValueNetworkDDPG())(next_state, next_action)
+        q_target = jax.lax.stop_gradient(reward + self._gamma * (1-not_done) * bootstrapped_q)
+        q_value = hk.BatchApply(ValueNetworkDDPG())(state, action)
+
+        value_loss = jnp.mean(.5 * jnp.square(q_target - q_value))
+
+        # batched_return_fn = jax.vmap(
+        #     functools.partial(rlax.lambda_returns, stop_target_gradients=True),
+        #     in_axes=1,
+        #     out_axes=1)
+        # value_targets = batched_return_fn(
+        #     trajectory.rewards[1:],
+        #     (self._gamma * trajectory.discounts * (1. - trajectory.dones))[:-1],
+        #     values[1:],
+        # )
+        # value_loss = jnp.mean(.5 * jnp.square(values[:-1] - value_targets))
+
+        # sg_advantages = jax.lax.stop_gradient(value_targets - values[:-1])
+        # action_log_probs = rlax.gaussian_diagonal().logprob(trajectory.actions, mu, sigma)
+
+        # policy_loss = -jnp.mean(sg_advantages * action_log_probs[:-1])
+        # policy_loss = policy_loss + self._entropy_loss_coef * entropy_loss
 
         logs = dict(actions_mean=trajectory.actions.mean(),
                     value_loss=value_loss,
-                    policy_loss=policy_loss,
-                    entropy_loss=entropy_loss,
-                    value_mean=values.mean(),
-                    value_target_mean=value_targets.mean(),
-                    mean_reward=trajectory.rewards.mean(),
-                    obs=trajectory.observations.mean(axis=(0, 1)),
+                    policy_loss=actor_loss,
+                    value_mean=q_value.mean(),
+                    value_target_mean=q_target.mean(),
+                    mean_reward=reward.mean(),
+                    obs=state.mean(axis=(0, 1)),
                     )
-        return value_loss + policy_loss, logs
+        return value_loss + actor_loss, logs
