@@ -209,7 +209,7 @@ class DDPGAgent(Agent):
         self._optimizer = optax.adam(learning_rate=learning_rate)
         self.init_fn = jax.jit(self._init_fn)
         self.update_fn = jax.jit(self._update_fn)
-        self.apply_policy = jax.jit(self._apply_policy, static_argnums=3) #boolean as 3rd argument (is_training for BatchNorm)
+        self.apply_policy = jax.jit(self._apply_policy)
         self.apply_value = jax.jit(self._apply_value)
 
         self._rng, init_rng = jax.random.split(self._rng)
@@ -245,21 +245,20 @@ class DDPGAgent(Agent):
         return logs
 
     def _batched_actor_step(self, learner_state: LearnerState, rng: chex.PRNGKey, observations: types.NestedArray,
-                            for_eval: bool = False) -> types.NestedArray:
-        is_training = False #not for_eval
-        actions, state = self.apply_policy(learner_state.params, learner_state.state, observations, is_training)
+                            ) -> types.NestedArray:
+        actions, state = self.apply_policy(learner_state.params, learner_state.state, observations)
         return actions #learner state does not need to be propagated as it's an off-policy algorithm
 
-    def batched_actor_step(self, observations: types.NestedArray, for_eval: bool = False) -> types.NestedArray:
+    def batched_actor_step(self, observations: types.NestedArray) -> types.NestedArray:
         """Returns actions in response to observations."""
-        return self._batched_actor_step(self._learner_state, self._rng, observations, for_eval)
-        
+        return self._batched_actor_step(self._learner_state, self._rng, observations)
+
 
     def _hk_apply_value(self, observations: types.NestedArray, actions:types.NestedArray) -> chex.Array:
         return ValueNetworkDDPG(name='value')(observations, actions) #2nd arg will be actions
 
-    def _hk_apply_policy(self, observations: types.NestedArray, is_training: bool) -> chex.Array:
-        return PolicyNetworkDDPG(self._environment_spec.actions, name='policy')(observations, is_training)
+    def _hk_apply_policy(self, observations: types.NestedArray) -> chex.Array:
+        return PolicyNetworkDDPG(self._environment_spec.actions, name='policy')(observations, False)
 
     def _loss_function(self, transition: Transition) -> Tuple[chex.Array, LogsDict]:
 
@@ -270,7 +269,7 @@ class DDPGAgent(Agent):
         actor_loss = -jnp.mean(values)
 
         #critic loss
-        next_action = PolicyNetworkDDPG(self._environment_spec.actions, name='policy_target')(transition.obs_t, True)
+        next_action = PolicyNetworkDDPG(self._environment_spec.actions, name='policy_target')(transition.obs_t, False)
         bootstrapped_q = ValueNetworkDDPG(name='value_target')(transition.obs_t, next_action)
         q_target = jax.lax.stop_gradient(transition.reward_t + self._gamma * (1-transition.done) * bootstrapped_q)
         q_value = value_network(transition.obs_tm1, transition.action_tm1)

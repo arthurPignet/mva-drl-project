@@ -82,7 +82,7 @@ def a2c_parallel_interaction_loop(agent: A2CAgent, env_factory: Callable[[], dm_
         actor.join()
 
 
-def evaluation_parallel_interaction_loop(agent: A2CAgent, 
+def evaluation_parallel_interaction_loop(agent: A2CAgent,
 env_factory: Callable[[],
  dm_env.Environment],
   sequence_length: int,
@@ -95,9 +95,9 @@ env_factory: Callable[[],
   rewards = []
   dones = []
   for learner_step in range(sequence_length):
-    
+
     ts = tree.map_structure(lambda *x: np.stack(x, axis=0), *[pipe.recv() for pipe in parent_pipes])
-    actions = agent.batched_actor_step(ts.observation, for_eval=True)
+    actions = agent.batched_actor_step(ts.observation)
     for i, pipe in enumerate(parent_pipes):
       pipe.send(actions[i])
     rewards.append(ts.reward)
@@ -114,7 +114,7 @@ def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], d
   replay = BatchedReplayBuffer(buffer_size)
   for actor in actors:
     actor.start()
-  
+
   for learner_step in range(max_learner_steps):
     ts = tree.map_structure(lambda *x: np.stack(x, axis=0), *[pipe.recv() for pipe in parent_pipes])
     if learner_step>0:
@@ -131,6 +131,6 @@ def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], d
       pipe.send(actions[i])
     timestep = deepcopy(ts)
 
-    
+
   for actor in actors:
     actor.join()
