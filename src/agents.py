@@ -233,11 +233,19 @@ class DDPGAgent(Agent):
         opt_state = self._optimizer.init(params)
         return LearnerState(params=params, state=state, opt_state=opt_state)
 
+    def slow_copy(self, params):
+        tau = self._tau
+        for k, v in params.items():
+            if k.startswith(("value/", "policy/")):
+                k_t = k.replace("value/", "value_target/").replace("policy/", "policy_target/")
+                params[k_t] = jax.tree_util.tree_map(lambda x, y: tau * x + (1 - tau) * y, v, params[k_t])
+        return params
+
     def _update_fn(self, learner_state: LearnerState, transition: Transition) -> Tuple[LearnerState, LogsDict]:
         (loss, (aux, state)), grads = self._grad(learner_state.params, learner_state.state,  transition)
         udpates, new_opt_state = self._optimizer.update(grads, learner_state.opt_state, learner_state.params)
         new_params = optax.apply_updates(learner_state.params, udpates)
-
+        new_params, state = self.slow_copy(new_params), self.slow_copy(state)
         return LearnerState(params=new_params, state=state, opt_state=new_opt_state), aux
 
     def learner_step(self, transition: Transition) -> Mapping[str, chex.ArrayNumpy]:
