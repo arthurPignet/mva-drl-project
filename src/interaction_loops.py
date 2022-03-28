@@ -108,7 +108,7 @@ env_factory: Callable[[],
     actor.close()
 
 
-def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size=1000, batch_size=32, num_actors: int = 2):
+def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size:int = 1000, batch_size: int = 32, num_actors: int = 2):
   parent_pipes, children_pipes = zip(*[mp.Pipe(duplex=True) for _ in range(num_actors)])
   actors = [mp.Process(target=actor_target, args=(env_factory, np.random.randint(100), pipe, max_learner_steps)) for i, pipe in enumerate(children_pipes)]
   replay = BatchedReplayBuffer(buffer_size)
@@ -120,10 +120,11 @@ def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], d
     if learner_step>0:
       for i in range (len(ts.observation)):
         replay.add(timestep.observation[i],actions[i],ts.reward[i],ts.discount[i],ts.observation[i],ts.step_type[i])
-      transitions = replay.sample_batch(min(K,len(replay._memory)-1))
-      #logs = agent.learner_step(transitions)
-      #if learner_step % 10 == 0:
-        #print(pretty_print(logs))
+      transitions = replay.sample_batch(min(batch_size,len(replay._memory)-1))
+      logs = agent.learner_step(transitions)
+      if learner_step % 10 == 0:
+        print(f'iteration nb{learner_step}')
+        print(pretty_print(logs))
 
     actions = agent.batched_actor_step(ts.observation)
     for i, pipe in enumerate(parent_pipes):

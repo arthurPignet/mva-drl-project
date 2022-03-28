@@ -53,10 +53,10 @@ class ValueNetworkDDPG(hk.Module):
 
     def __call__(self, s: chex.Array, a: chex.Array) -> chex.Array:
         h = s
-        h = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.99)(h)
+        h = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.99)(h, True)
 
         h = hk.Linear(400)(h)
-        h = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.99)(h)
+        h = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.99)(h, True)
         h = jax.nn.relu(h)
 
         h = hk.Linear(300)(jnp.concatenate([h,a], axis=1))

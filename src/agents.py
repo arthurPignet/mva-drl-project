@@ -7,7 +7,7 @@ import rlax
 import jax.numpy as jnp
 import optax
 import chex
-from .data import Trajectory, LearnerState, LogsDict
+from .data import Trajectory, LearnerState, LogsDict, Transition
 import tree
 from typing import Sequence, Mapping, Tuple
 from acme import types, specs
@@ -151,6 +151,7 @@ class A2CAgent(Agent):
         """
         # inputs are assumed to be provided such that the full sequence that we get is
         # o_0 a_0 r_0 d_0, ...., o_T, a_T, r_T, d_T
+        print(trajectory.observations.shape)
         mu, sigma = hk.BatchApply(PolicyNetwork(self._policy_output_sizes, self._environment_spec.actions))(
             trajectory.observations)
         values = hk.BatchApply(ValueNetwork(self._value_output_sizes))(trajectory.observations)
@@ -188,9 +189,7 @@ class A2CAgent(Agent):
 
 
 class DDPGAgent(Agent):
-    def __init__(self, seed: int, learning_rate: float, gamma: float, value_output_sizes: Sequence[int],
-                 policy_output_sizes: Sequence[int], environment_spec: specs.EnvironmentSpec,
-                 entropy_loss_coef: float) -> None:
+    def __init__(self, seed: int, learning_rate: float, gamma: float, tau: float, environment_spec: specs.EnvironmentSpec) -> None:
         self._rng = jax.random.PRNGKey(seed=seed)
         # hk.transform_with_state because of BatchNorm
         self._init_loss, apply_loss = hk.without_apply_rng(hk.transform_with_state(self._loss_function))
@@ -202,10 +201,9 @@ class DDPGAgent(Agent):
         _, self._apply_policy = hk.without_apply_rng(hk.transform_with_state(self._hk_apply_policy))
         _, self._apply_value = hk.without_apply_rng(hk.transform_with_state(self._hk_apply_value))
 
-        self._value_output_sizes = value_output_sizes
-        self._policy_output_sizes = policy_output_sizes
         #self._entropy_loss_coef = entropy_loss_coef  don't need that as we are not regulazing
         self._gamma = gamma
+        self._tau = tau
         self._environment_spec = environment_spec
 
         self._optimizer = optax.adam(learning_rate=learning_rate)
@@ -215,97 +213,76 @@ class DDPGAgent(Agent):
         self.apply_value = jax.jit(self._apply_value)
 
         self._rng, init_rng = jax.random.split(self._rng)
-        self._learner_state = self._init_fn(init_rng, self._generate_dummy_trajectory())
+        self._learner_state = self._init_fn(init_rng, self._generate_dummy_transition())
 
-    def _init_fn(self, rng: chex.PRNGKey, trajectory: Trajectory) -> LearnerState:
-        params, state = self._init_loss(rng, trajectory)
+    def _generate_dummy_transition(self) -> Trajectory:
+        observation = self._environment_spec.observations.generate_value()
+        action = self._environment_spec.actions.generate_value()
+
+        return Transition(
+            obs_tm1= observation[None],
+            action_tm1= action[None],
+            reward_t= jnp.zeros(1)[None],
+            discount_t=jnp.zeros(1)[None],
+            obs_t=observation[None],
+            done=jnp.zeros(1)[None]
+        )
+
+    def _init_fn(self, rng: chex.PRNGKey, transition: Transition) -> LearnerState:
+        params, state = self._init_loss(rng, transition)
         opt_state = self._optimizer.init(params)
         return LearnerState(params=params, state=state, opt_state=opt_state)
 
-    def _update_fn(self, learner_state: LearnerState, trajectory: Trajectory) -> Tuple[LearnerState, LogsDict]:
-        (loss, (aux, state)), grads = self._grad(learner_state.params, trajectory)
+    def _update_fn(self, learner_state: LearnerState, transition: Transition) -> Tuple[LearnerState, LogsDict]:
+        (loss, (aux, state)), grads = self._grad(learner_state.params, learner_state.state,  transition)
         udpates, new_opt_state = self._optimizer.update(grads, learner_state.opt_state, learner_state.params)
         new_params = optax.apply_updates(learner_state.params, udpates)
+
         return LearnerState(params=new_params, state=state, opt_state=new_opt_state), aux
 
-    def learner_step(self, trajectory: Trajectory) -> Mapping[str, chex.ArrayNumpy]:
-        self._learner_state, logs = self.update_fn(self._learner_state, trajectory)
+    def learner_step(self, transition: Transition) -> Mapping[str, chex.ArrayNumpy]:
+        self._learner_state, logs = self.update_fn(self._learner_state, transition)
         return logs
 
     def _batched_actor_step(self, learner_state: LearnerState, rng: chex.PRNGKey, observations: types.NestedArray,
                             for_eval: bool = False) -> types.NestedArray:
-        is_training = not for_eval
+        is_training = False #not for_eval
         actions, state = self.apply_policy(learner_state.params, learner_state.state, observations, is_training)
-        return actions #learner state should probably be propagated
-
-    def _generate_dummy_trajectory(self) -> Trajectory:
-        observation = self._environment_spec.observations.generate_value()
-        action = self._environment_spec.actions.generate_value()
-
-        def _add_dim(x: types.NestedArray, dim_size: int) -> types.NestedArray:
-            return jax.tree_map(lambda x: jnp.repeat(x[None], axis=0, repeats=dim_size), x)
-
-        return Trajectory(
-            observations=_add_dim(_add_dim(observation, 2), 2),
-            actions=_add_dim(_add_dim(action, 2), 2),
-            rewards=jnp.zeros((2, 2)),
-            dones=jnp.zeros((2, 2)),
-            discounts=jnp.zeros((2, 2)),
-
-        )
+        return actions #learner state does not need to be propagated as it's an off-policy algorithm
 
     def batched_actor_step(self, observations: types.NestedArray, for_eval: bool = False) -> types.NestedArray:
         """Returns actions in response to observations."""
         return self._batched_actor_step(self._learner_state, self._rng, observations, for_eval)
+        
 
-    def _hk_apply_value(self, observations: types.NestedArray) -> chex.Array:
-        return ValueNetworkDDPG()(observations, observations) #2nd arg will be actions
+    def _hk_apply_value(self, observations: types.NestedArray, actions:types.NestedArray) -> chex.Array:
+        return ValueNetworkDDPG(name='value')(observations, actions) #2nd arg will be actions
 
     def _hk_apply_policy(self, observations: types.NestedArray, is_training: bool) -> chex.Array:
-        return PolicyNetworkDDPG(self._environment_spec.actions)(observations, is_training)
+        return PolicyNetworkDDPG(self._environment_spec.actions, name='policy')(observations, is_training)
 
-    def _loss_function(self, trajectory: Trajectory) -> Tuple[chex.Array, LogsDict]:
-        # inputs are assumed to be provided such that the full sequence that we get is
-        # o_0 a_0 r_0 d_0, ...., o_T, a_T, r_T, d_T
-        state, action, next_state, reward, not_done = sample.data # need to change that
+    def _loss_function(self, transition: Transition) -> Tuple[chex.Array, LogsDict]:
 
         # actor loss
-        action_ = hk.BatchApply(PolicyNetworkDDPG(self._environment_spec.actions))(state, True)
-        values = hk.BatchApply(ValueNetworkDDPG())(state, action_) #2nd arg will be actions
+        action_ = PolicyNetworkDDPG(self._environment_spec.actions, name='policy')(transition.obs_tm1, True)
+        value_network = ValueNetworkDDPG(name='value')
+        values = value_network(transition.obs_tm1, action_) #2nd arg will be actions
         actor_loss = -jnp.mean(values)
 
-
         #critic loss
-        next_action = hk.BatchApply(PolicyNetworkDDPG(self._environment_spec.actions))(next_state, True)
-        bootstrapped_q = hk.BatchApply(ValueNetworkDDPG())(next_state, next_action)
-        q_target = jax.lax.stop_gradient(reward + self._gamma * (1-not_done) * bootstrapped_q)
-        q_value = hk.BatchApply(ValueNetworkDDPG())(state, action)
+        next_action = PolicyNetworkDDPG(self._environment_spec.actions, name='policy_target')(transition.obs_t, True)
+        bootstrapped_q = ValueNetworkDDPG(name='value_target')(transition.obs_t, next_action)
+        q_target = jax.lax.stop_gradient(transition.reward_t + self._gamma * (1-transition.done) * bootstrapped_q)
+        q_value = value_network(transition.obs_tm1, transition.action_tm1)
 
         value_loss = jnp.mean(.5 * jnp.square(q_target - q_value))
 
-        # batched_return_fn = jax.vmap(
-        #     functools.partial(rlax.lambda_returns, stop_target_gradients=True),
-        #     in_axes=1,
-        #     out_axes=1)
-        # value_targets = batched_return_fn(
-        #     trajectory.rewards[1:],
-        #     (self._gamma * trajectory.discounts * (1. - trajectory.dones))[:-1],
-        #     values[1:],
-        # )
-        # value_loss = jnp.mean(.5 * jnp.square(values[:-1] - value_targets))
-
-        # sg_advantages = jax.lax.stop_gradient(value_targets - values[:-1])
-        # action_log_probs = rlax.gaussian_diagonal().logprob(trajectory.actions, mu, sigma)
-
-        # policy_loss = -jnp.mean(sg_advantages * action_log_probs[:-1])
-        # policy_loss = policy_loss + self._entropy_loss_coef * entropy_loss
-
-        logs = dict(actions_mean=trajectory.actions.mean(),
+        logs = dict(actions_mean=transition.action_tm1.mean(),
                     value_loss=value_loss,
                     policy_loss=actor_loss,
                     value_mean=q_value.mean(),
                     value_target_mean=q_target.mean(),
-                    mean_reward=reward.mean(),
-                    obs=state.mean(axis=(0, 1)),
+                    mean_reward=transition.reward_t.mean(),
+                    obs=transition.obs_tm1.mean(axis=(0, 1)),
                     )
         return value_loss + actor_loss, logs
