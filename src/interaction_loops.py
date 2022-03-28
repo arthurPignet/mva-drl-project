@@ -3,6 +3,7 @@ import dm_env
 
 import multiprocessing as mp
 import numpy as np
+import jax
 
 import tree
 from typing import *
@@ -108,7 +109,8 @@ env_factory: Callable[[],
     actor.close()
 
 
-def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size:int = 1000, batch_size: int = 32, num_actors: int = 2):
+def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size:int = 1000, batch_size: int = 32, num_actors: int = 2, seed = 0):
+  rng_key = jax.random.PRNGKey(seed=seed)
   parent_pipes, children_pipes = zip(*[mp.Pipe(duplex=True) for _ in range(num_actors)])
   actors = [mp.Process(target=actor_target, args=(env_factory, np.random.randint(100), pipe, max_learner_steps)) for i, pipe in enumerate(children_pipes)]
   replay = BatchedReplayBuffer(buffer_size)
@@ -127,8 +129,10 @@ def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], d
         print(pretty_print(logs))
 
     actions = agent.batched_actor_step(ts.observation)
+    rng_key, init_rng = jax.random.split(rng_key)
+    noisy_actions = actions + jax.random.normal(key=init_rng, shape=actions.shape)*0.2
     for i, pipe in enumerate(parent_pipes):
-      pipe.send(actions[i])
+      pipe.send(noisy_actions[i])
     timestep = deepcopy(ts)
 
 

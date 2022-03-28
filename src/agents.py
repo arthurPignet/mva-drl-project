@@ -277,7 +277,7 @@ class DDPGAgent(Agent):
         actor_loss = -jnp.mean(values)
 
         #critic loss
-        next_action = PolicyNetworkDDPG(self._environment_spec.actions, name='policy_target')(transition.obs_t, False)
+        next_action = PolicyNetworkDDPG(self._environment_spec.actions, name='policy_target')(transition.obs_t, True)
         bootstrapped_q = ValueNetworkDDPG(name='value_target')(transition.obs_t, next_action)
         q_target = jax.lax.stop_gradient(transition.reward_t + self._gamma * (1-transition.done) * bootstrapped_q)
         q_value = value_network(transition.obs_tm1, transition.action_tm1)
