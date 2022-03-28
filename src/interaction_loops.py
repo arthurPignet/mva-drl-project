@@ -1,3 +1,4 @@
+from copy import deepcopy
 import dm_env
 
 import multiprocessing as mp
@@ -8,7 +9,9 @@ from typing import *
 
 from .utils import actor_target, sequence_of_timesteps_with_action_to_trajectory, returns
 from .plot_utils import pretty_print
-from .agents import Agent, A2CAgent
+from .agents import Agent, A2CAgent, DDPGAgent
+from .replay_buffer import BatchedReplayBuffer
+
 
 def simple_interaction_loop(agent: Agent, environment: dm_env.Environment, max_num_steps: int = 5000) -> None:
     ts = environment.reset()
@@ -103,3 +106,30 @@ env_factory: Callable[[],
   for actor in actors:
     actor.join()
     actor.close()
+
+
+def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size=1000, batch_size=32, num_actors: int = 2):
+  parent_pipes, children_pipes = zip(*[mp.Pipe(duplex=True) for _ in range(num_actors)])
+  actors = [mp.Process(target=actor_target, args=(env_factory, np.random.randint(100), pipe, max_learner_steps)) for i, pipe in enumerate(children_pipes)]
+  replay = BatchedReplayBuffer(buffer_size)
+  for actor in actors:
+    actor.start()
+  
+  for learner_step in range(max_learner_steps):
+    ts = tree.map_structure(lambda *x: np.stack(x, axis=0), *[pipe.recv() for pipe in parent_pipes])
+    if learner_step>0:
+      for i in range (len(ts.observation)):
+        replay.add(timestep.observation[i],actions[i],ts.reward[i],ts.discount[i],ts.observation[i],ts.step_type[i])
+      transitions = replay.sample_batch(min(K,len(replay._memory)-1))
+      #logs = agent.learner_step(transitions)
+      #if learner_step % 10 == 0:
+        #print(pretty_print(logs))
+
+    actions = agent.batched_actor_step(ts.observation)
+    for i, pipe in enumerate(parent_pipes):
+      pipe.send(actions[i])
+    timestep = deepcopy(ts)
+
+    
+  for actor in actors:
+    actor.join()
