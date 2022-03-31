@@ -5,15 +5,13 @@ import gym
 import numpy as np
 
 
-def custom_env_factory(name: str, seed: int, for_evaluation: bool = False) -> dm_env.Environment:
-    del seed
-    return CustomEnv(name, for_evaluation=for_evaluation)
-
 def inverted_pendulum_env_factory(seed: int, for_evaluation: bool = False) -> dm_env.Environment:
-    return custom_env_factory("Pendulum-v1", for_evaluation=for_evaluation)
+    del seed
+    return InvertedPendulumEnv(for_evaluation=for_evaluation)
 
 def reacher_env_factory(seed: int, for_evaluation: bool = False) -> dm_env.Environment:
-    return custom_env_factory("Reacher-v2", for_evaluation=for_evaluation)
+    del seed
+    return ReacherEnv(for_evaluation=for_evaluation)
 
 
 class CustomEnv(dm_env.Environment):
@@ -44,7 +42,7 @@ class CustomEnv(dm_env.Environment):
 class InvertedPendulumEnv(CustomEnv):
     def __init__(self, for_evaluation: bool):
         CustomEnv.__init__(self, "Pendulum-v1", for_evaluation)
-    
+
     @staticmethod
     def observation_spec() -> specs.BoundedArray:
         return specs.BoundedArray(shape=(3,), minimum=-8., maximum=8., dtype=np.float32)
@@ -66,4 +64,3 @@ class ReacherEnv(CustomEnv):
     @staticmethod
     def action_spec() -> specs.BoundedArray:
         return specs.BoundedArray(shape=(2,), minimum=-1., maximum=1., dtype=np.float32)
-
