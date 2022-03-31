@@ -12,6 +12,10 @@ import numpy as np
 import tree
 
 
+import sdepy
+from sdepy import *
+
+
 def _validate_timestep(ts: dm_env.TimeStep) -> dm_env.TimeStep:
     """Some timesteps may come with rewards or discounts set to None, we
   replace such values by 0. (resp 1.)."""
@@ -67,3 +71,7 @@ def returns(rewards: chex.ArrayNumpy, dones: chex.ArrayNumpy) -> chex.ArrayNumpy
     for r_t, d_t in zip(rewards[::-1], dones[::-1]):
         r = r_t + (1. - d_t) * r
     return r
+
+@integrate
+def my_process(t, x, theta=0.15, k=-1, sigma=0.2):
+    return {'dt': k*(theta - x), 'dw': sigma}

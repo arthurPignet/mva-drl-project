@@ -18,7 +18,9 @@ class Trajectory:
 class LearnerState:
     params: chex.Array
     state: chex.Array # state for the batchNorm and other stuff that haiku need (cf transform_with_state)
-    opt_state: optax.OptState
+    opt_critic_state: optax.OptState
+    opt_actor_state: optax.OptState
+
 
 LogsDict = Mapping[str, chex.Array]
 
