@@ -1,0 +1,11 @@
+acme
+chex
+dm_env
+gym
+haiku
+jax
+matplotlib
+numpy
+optax
+sdepy
+tree
