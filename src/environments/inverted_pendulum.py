@@ -9,6 +9,10 @@ def inverted_pendulum_env_factory(seed: int, for_evaluation: bool = False) -> dm
     del seed
     return InvertedPendulumEnv(for_evaluation=for_evaluation)
 
+def reacher_env_factory(seed: int, for_evaluation: bool = False) -> dm_env.Environment:
+    del seed
+    return ReacherEnv(for_evaluation=for_evaluation)
+
 
 class InvertedPendulumEnv(dm_env.Environment):
     def __init__(self, for_evaluation: bool) -> None:
@@ -31,6 +35,14 @@ class InvertedPendulumEnv(dm_env.Environment):
             self.screens.append(self._env.render(mode='rgb_array'))
         return dm_env.restart(obs)
 
+    def close(self) -> None:
+        self._env.close()
+
+
+class InvertedPendulumEnv(CustomEnv):
+    def __init__(self, for_evaluation: bool):
+        CustomEnv.__init__(self, "Pendulum-v1", for_evaluation)
+
     @staticmethod
     def observation_spec() -> specs.BoundedArray:
         return specs.BoundedArray(shape=(3,), minimum=-8., maximum=8., dtype=np.float32)
@@ -39,5 +51,16 @@ class InvertedPendulumEnv(dm_env.Environment):
     def action_spec() -> specs.BoundedArray:
         return specs.BoundedArray(shape=(1,), minimum=-2., maximum=2., dtype=np.float32)
 
-    def close(self) -> None:
-        self._env.close()
+
+
+class ReacherEnv(CustomEnv):
+    def __init__(self, for_evaluation: bool):
+        CustomEnv.__init__(self, "Reacher-v2", for_evaluation)
+
+    @staticmethod
+    def observation_spec() -> specs.BoundedArray:
+        return specs.BoundedArray(shape=(11,), minimum=-np.inf, maximum=np.inf, dtype=np.float32)
+
+    @staticmethod
+    def action_spec() -> specs.BoundedArray:
+        return specs.BoundedArray(shape=(2,), minimum=-1., maximum=1., dtype=np.float32)
