@@ -111,7 +111,7 @@ env_factory: Callable[[],
     actor.close()
 
 
-def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size:int = 1000, batch_size: int = 32,rewards_scaler=0.1, num_actors: int = 2, seed = 0):
+def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, replay: BatchedReplayBuffer, batch_size: int = 32,rewards_scaler=0.1, num_actors: int = 2, seed = 0):
   plots = dict(iterations = [],
                actions_mean=[],
                value_loss=[],
@@ -127,7 +127,6 @@ def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], d
   rng_key = jax.random.PRNGKey(seed=seed)
   parent_pipes, children_pipes = zip(*[mp.Pipe(duplex=True) for _ in range(num_actors)])
   actors = [mp.Process(target=actor_target, args=(env_factory, np.random.randint(100), pipe, max_learner_steps)) for i, pipe in enumerate(children_pipes)]
-  replay = BatchedReplayBuffer(buffer_size)
   for actor in actors:
     actor.start()
 
@@ -158,7 +157,7 @@ def ddpg_parallel_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], d
 
   for actor in actors:
     actor.join()
-  return plots
+  return plots, replay
 
 
 def ddpg_simple_interaction_loop(agent: DDPGAgent, env_factory: Callable[[], dm_env.Environment], max_learner_steps: int, buffer_size:int = 1000, batch_size: int = 32, num_actors: int = 2, seed = 0):
