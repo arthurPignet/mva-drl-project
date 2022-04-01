@@ -240,13 +240,21 @@ class DDPGAgent(Agent):
         critic_params, critic_state = self._init_critic_loss(rng, transition, True)
         actor_params, actor_state = self._init_actor_loss(rng, transition, True)
 
-        critic_params_opt = {k:critic_params[k] for k in critic_params.keys() if  k.startswith("value/")}
-        actor_params_opt = {k:actor_params[k] for k in actor_params.keys() if  k.startswith("policy/")}
+        # get only critic, resp. actor params. 
+        critic_params = {k:critic_params[k] for k in critic_params.keys() if  k.startswith("value/")}
+        actor_params = {k:actor_params[k] for k in actor_params.keys() if  k.startswith("policy/")}
+        # copy the params for the target networks. 
+        target_critic_params = {k.replace("value/", "value_target/"):critic_params[k] for k in critic_params.keys()}
+        target_actor_params = {k.replace("policy/", "policy_target/"):actor_params[k] for k in actor_params.keys()}
 
-        opt_critic_state = self._critic_optimizer.init(critic_params_opt)
-        opt_actor_state = self._actor_optimizer.init(actor_params_opt)
+        opt_critic_state = self._critic_optimizer.init(critic_params)
+        opt_actor_state = self._actor_optimizer.init(actor_params)
         actor_state.update(critic_state)
+        
         actor_params.update(critic_params)
+        actor_params.update(target_actor_params)
+        actor_params.update(target_critic_params)
+
         return LearnerState(params=actor_params, state=actor_state, opt_critic_state=opt_critic_state, opt_actor_state=opt_actor_state)
 
     def slow_copy(self, params):
