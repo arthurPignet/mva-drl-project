@@ -44,7 +44,7 @@ class ReplayBuffer:
 
 class BatchedReplayBuffer(ReplayBuffer):
 
-      def sample_batch(self, batch_size):
+      def sample_batch(self, batch_size: int):
         """Randomly sample a batch of experiences from memory."""
         assert len(self._memory) > batch_size, 'Insuficient number of transitions in replay buffer'
         all_transitions = [self.sample() for _ in range(batch_size)] 

@@ -2,7 +2,6 @@
 import dm_env
 
 import multiprocessing as mp
-import multiprocessing.connection
 
 from typing import *
 from .data import Trajectory
