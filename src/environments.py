@@ -14,9 +14,9 @@ def reacher_env_factory(seed: int, for_evaluation: bool = False) -> dm_env.Envir
     return ReacherEnv(for_evaluation=for_evaluation)
 
 
-class InvertedPendulumEnv(dm_env.Environment):
-    def __init__(self, for_evaluation: bool) -> None:
-        self._env = gym.make('Pendulum-v1')
+class CustomEnv(dm_env.Environment):
+    def __init__(self, name: str, for_evaluation: bool) -> None:
+        self._env = gym.make(name)
         self._for_evaluation = for_evaluation
         if self._for_evaluation:
             self.screens = []

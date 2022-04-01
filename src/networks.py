@@ -85,4 +85,4 @@ class PolicyNetworkDDPG(hk.Module):
 
         h = hk.Linear(action_dims, hk.initializers.RandomUniform(-3e-3, 3e-3))(h)
         h = jnp.tanh(h)
-        return hk.Reshape(action_shape)(h)
+        return hk.Reshape(action_shape)(h) * self._action_spec.maximum
