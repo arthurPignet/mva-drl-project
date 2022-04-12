@@ -47,13 +47,14 @@ Project Organization
 Installation 
 ---------------
 
-Clone this repo and install the requierement. Note that we are using (Jax)[https://jax.readthedocs.io/en/latest/], so you need to be in a compatible environment. 
+Clone this repo and install the requierement. Note that we are using [Jax](https://jax.readthedocs.io/en/latest/) and [Gym](https://gym.openai.com/), so you need to be in a compatible environment. 
 
 ```bash
 $ git clone https://github.com/arthurPignet/mva-drl-project.git
 $ cd mva-drl-project/
 $ pip install -v .
 ```
+
 Tested configuration
 ---------------
 This installation was tested in Google Colab (free version) and with a Azure VM running with Ubuntu 20.04.4 LTS
